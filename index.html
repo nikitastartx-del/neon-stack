@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <script src="https://telegram.org"></script>
+ <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -156,6 +156,14 @@
     box-shadow: 0 0 22px rgba(255, 110, 150, .6);
   }
   #newBest.show { display: block; animation: pop .3s ease; }
+
+  #infoPanel { position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:22px; background:rgba(5,8,25,.78); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); pointer-events:auto; z-index:30; }
+  #infoPanel.show { display:flex; }
+  #infoCard { width:min(92vw,430px); max-height:82vh; overflow:auto; padding:26px 22px; border-radius:24px; background:linear-gradient(180deg,rgba(20,28,65,.97),rgba(10,15,40,.97)); border:1px solid rgba(150,220,255,.22); box-shadow:0 0 50px rgba(0,220,255,.18); color:#fff; text-align:center; }
+  #infoTitle { font-size:clamp(25px,7vw,38px); font-weight:900; letter-spacing:2px; margin-bottom:16px; }
+  #infoBody { color:rgba(255,255,255,.82); line-height:1.65; font-size:14px; white-space:pre-line; }
+  #infoClose { margin-top:20px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; border-radius:999px; padding:11px 22px; font-weight:800; cursor:pointer; }
+  #tgUser { margin-top:8px; color:rgba(150,230,255,.95); font-weight:700; }
 </style>
 </head>
 <body>
@@ -188,6 +196,14 @@
     <div class="tap">TAP TO RESTART</div>
   </div>
 </div>
+  <div id="infoPanel" aria-hidden="true">
+    <div id="infoCard">
+      <div id="infoTitle">NEON STACK</div>
+      <div id="tgUser"></div>
+      <div id="infoBody"></div>
+      <button id="infoClose" type="button">CLOSE</button>
+    </div>
+  </div>
 
 <script>
 (function () {
@@ -271,6 +287,67 @@
   var banner = null, bannerCol = "255,255,255", bannerT = 0;
 
   var shootingStar = { active: false, t: 3 + Math.random() * 4, x: 0, y: 0, vx: 0, vy: 0, life: 0 };
+
+  var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
+
+  var elInfoPanel = document.getElementById("infoPanel");
+  var elInfoTitle = document.getElementById("infoTitle");
+  var elInfoBody = document.getElementById("infoBody");
+  var elTgUser = document.getElementById("tgUser");
+  var elInfoClose = document.getElementById("infoClose");
+
+  function tgName() {
+    try {
+      var u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+      if (!u) return "Local player";
+      return u.username ? "@" + u.username : ((u.first_name || "Player") + (u.last_name ? " " + u.last_name : ""));
+    } catch (e) { return "Local player"; }
+  }
+
+  function openInfo(kind) {
+    if (kind === "profile") {
+      var acc = totalBlocks > 0 ? Math.round(totalPerfects / totalBlocks * 100) : 0;
+      elInfoTitle.textContent = "PROFILE";
+      elTgUser.textContent = tgName();
+      elInfoBody.textContent =
+        "BEST SCORE\n" + best + "\n\n" +
+        "GAMES\n" + games + "\n\n" +
+        "BEST COMBO\n" + bestCombo + "\n\n" +
+        "ACCURACY\n" + acc + "%";
+    } else {
+      elInfoTitle.textContent = "HOW TO PLAY";
+      elTgUser.textContent = "";
+      elInfoBody.textContent =
+        "HOLD — slow the moving block.\n" +
+        "RELEASE — drop the block.\n\n" +
+        "Place blocks accurately to build your combo and score.\n\n" +
+        "SPACE / ENTER / ARROW DOWN — play or drop\n" +
+        "M — toggle sound";
+    }
+    elInfoPanel.classList.add("show");
+    elInfoPanel.setAttribute("aria-hidden", "false");
+  }
+
+  function closeInfo() {
+    elInfoPanel.classList.remove("show");
+    elInfoPanel.setAttribute("aria-hidden", "true");
+  }
+  elInfoClose.addEventListener("click", closeInfo);
+  elInfoPanel.addEventListener("click", function(e) { if (e.target === elInfoPanel) closeInfo(); });
+  if (tg && tg.BackButton) {
+    tg.BackButton.onClick(closeInfo);
+  }
+
+  function handleMiniAppRoute() {
+    try {
+      var q = new URLSearchParams(location.search);
+      var action = (q.get("action") || "").toLowerCase();
+      if (action === "play") { setTimeout(function(){ if (state === "menu") startGame(); }, 50); }
+      else if (action === "profile") { setTimeout(function(){ openInfo("profile"); }, 50); }
+      else if (action === "help") { setTimeout(function(){ openInfo("help"); }, 50); }
+    } catch (e) {}
+  }
 
   var muted = false;
   try { muted = localStorage.getItem("neon-stack-muted") === "1"; } catch (e) {}
@@ -663,6 +740,14 @@
     if (CONFIG.onStart) { try { CONFIG.onStart(); } catch (e) {} }
   }
 
+
+  // Optional Mini App bridge: a bot can open these URLs directly.
+  window.NeonStack = {
+    openProfile: function(){ openInfo("profile"); },
+    openHelp: function(){ openInfo("help"); },
+    play: function(){ if (state === "menu") startGame(); }
+  };
+
   function action() {
     ensureAudio();
     if (state === "menu") startGame();
@@ -691,6 +776,7 @@
   elMute.addEventListener("click", muteHandler);
 
   function beginPress(e) {
+    if (elInfoPanel.classList.contains("show")) return;
     if (e.button !== undefined && e.button !== 0) return;
     ensureAudio();
     if (activePtr !== -1) return;
@@ -1313,6 +1399,7 @@
   }
 
   resetGame();
+  handleMiniAppRoute();
   requestAnimationFrame(function (t) { lastT = t; requestAnimationFrame(frame); });
 })();
 </script>
