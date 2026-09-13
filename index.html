@@ -297,12 +297,46 @@
   var elTgUser = document.getElementById("tgUser");
   var elInfoClose = document.getElementById("infoClose");
 
+  var LEADERBOARD_URL = "https://script.google.com/macros/s/AKfycby04O9hz5uEzK27Ju-hvgzdNCUWQjKPSb8Y6vPBi82lIILaFOT4Sk_iYXfU295uZ-6H/exec";
+
   function tgName() {
     try {
       var u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
       if (!u) return "Local player";
       return u.username ? "@" + u.username : ((u.first_name || "Player") + (u.last_name ? " " + u.last_name : ""));
     } catch (e) { return "Local player"; }
+  }
+
+  function sendScoreToLeaderboard(finalScore) {
+    try {
+      if (!tg || !tg.initDataUnsafe || !tg.initDataUnsafe.user) return;
+
+      var u = tg.initDataUnsafe.user;
+      if (!u.id || !finalScore || finalScore <= 0) return;
+
+      var payload = JSON.stringify({
+        type: "score",
+        score: Number(finalScore),
+        user: {
+          id: u.id,
+          username: u.username || "",
+          name: ((u.first_name || "") + (u.last_name ? " " + u.last_name : "")).trim() || "Player"
+        }
+      });
+
+      // sendBeacon avoids a browser CORS preflight and is ideal for a fire-and-forget score.
+      if (navigator.sendBeacon) {
+        var blob = new Blob([payload], { type: "text/plain;charset=UTF-8" });
+        navigator.sendBeacon(LEADERBOARD_URL, blob);
+      } else {
+        fetch(LEADERBOARD_URL, {
+          method: "POST",
+          body: payload,
+          mode: "no-cors",
+          keepalive: true
+        }).catch(function(){});
+      }
+    } catch (e) {}
   }
 
   function openInfo(kind) {
@@ -708,6 +742,7 @@
     timeScale = 0.3;
     buzz(40);
     if (CONFIG.onGameOver) { try { CONFIG.onGameOver(score, best); } catch (e) {} }
+    sendScoreToLeaderboard(score);
   }
 
   function fallTower() {
