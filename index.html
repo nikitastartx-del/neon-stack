@@ -776,7 +776,6 @@
   elMute.addEventListener("click", muteHandler);
 
   function beginPress(e) {
-    if (elInfoPanel.classList.contains("show")) return;
     if (e.button !== undefined && e.button !== 0) return;
     ensureAudio();
     if (activePtr !== -1) return;
