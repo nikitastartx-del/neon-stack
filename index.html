@@ -795,21 +795,46 @@
     if (e.pointerId === activePtr) { activePtr = -1; hold = false; }
   });
   window.addEventListener("keydown", function (e) {
-    if (e.repeat) return;
-    if (e.code === "Space" || e.code === "Enter" || e.code === "ArrowDown") {
-      e.preventDefault();
-      ensureAudio();
-      if (state === "playing" && !hold) hold = true;
-      else if (state !== "playing") action();
-    } else if (e.code === "KeyM") {
-      muteHandler();
+    if (
+        e.code === "Space" ||
+        e.code === "Enter" ||
+        e.code === "ArrowDown"
+    ) {
+        e.preventDefault();
+
+        if (e.repeat) return;
+
+        ensureAudio();
+
+        if (state === "playing") {
+            hold = true;
+        } else {
+            action();
+        }
+
+        return;
     }
-  });
-  window.addEventListener("keyup", function (e) {
-    if (e.code === "Space" || e.code === "Enter" || e.code === "ArrowDown") {
-      if (hold) { hold = false; action(); }
+
+    if (e.code === "KeyM") {
+        e.preventDefault();
+        muteHandler();
     }
-  });
+});
+
+window.addEventListener("keyup", function (e) {
+    if (
+        e.code === "Space" ||
+        e.code === "Enter" ||
+        e.code === "ArrowDown"
+    ) {
+        e.preventDefault();
+
+        if (state === "playing" && hold) {
+            hold = false;
+            action();
+        }
+    }
+});
   window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   document.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
   document.addEventListener("visibilitychange", function () { lastT = performance.now(); });
