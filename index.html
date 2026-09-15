@@ -794,6 +794,7 @@
     if (e.pointerId === activePtr) { activePtr = -1; hold = false; }
   });
   window.addEventListener("keydown", function (e) {
+    // SPACE / ENTER / ARROW DOWN — work everywhere
     if (
         e.code === "Space" ||
         e.code === "Enter" ||
@@ -801,26 +802,34 @@
     ) {
         e.preventDefault();
 
+        // Prevent repeated keydown from firing multiple actions
         if (e.repeat) return;
 
         ensureAudio();
 
+        // During gameplay: hold = slow down the block
         if (state === "playing") {
             hold = true;
-        } else {
+        }
+        // Menu: start game
+        // Game Over: restart game
+        else {
             action();
         }
 
         return;
     }
 
+    // M — sound toggle works everywhere
     if (e.code === "KeyM") {
         e.preventDefault();
         muteHandler();
+        return;
     }
 });
 
 window.addEventListener("keyup", function (e) {
+    // Release SPACE / ENTER / ARROW DOWN = drop
     if (
         e.code === "Space" ||
         e.code === "Enter" ||
