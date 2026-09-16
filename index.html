@@ -164,6 +164,21 @@
   #infoBody { color:rgba(255,255,255,.82); line-height:1.65; font-size:14px; white-space:pre-line; }
   #infoClose { margin-top:20px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; border-radius:999px; padding:11px 22px; font-weight:800; cursor:pointer; }
   #tgUser { margin-top:8px; color:rgba(150,230,255,.95); font-weight:700; }
+
+  /* PREMIUM UI */
+  body.premium-mode { background:#070514; }
+  body.premium-mode #infoCard { border-color:rgba(190,120,255,.45); box-shadow:0 0 55px rgba(170,80,255,.25), inset 0 0 30px rgba(80,40,140,.08); }
+  #premiumBadge { display:none; margin:0 auto 14px; width:max-content; padding:7px 13px; border-radius:999px; background:linear-gradient(90deg,rgba(150,70,255,.28),rgba(255,90,200,.2)); border:1px solid rgba(220,160,255,.42); color:#f1dcff; font-weight:900; letter-spacing:1.5px; font-size:12px; }
+  #premiumBadge.show { display:block; }
+  #premiumList { margin-top:18px; text-align:left; }
+  .premiumStat { display:flex; justify-content:space-between; gap:16px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.08); }
+  .premiumStat b { color:#fff; }
+  .premiumStat span { color:rgba(255,255,255,.65); }
+  #premiumAchievements { margin-top:16px; text-align:left; }
+  .pa { padding:9px 11px; margin:7px 0; border-radius:12px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); }
+  .pa.unlocked { border-color:rgba(220,160,255,.4); background:rgba(160,80,255,.1); }
+  #premiumHint { display:none; margin-top:16px; color:rgba(220,190,255,.8); font-size:12px; line-height:1.5; }
+  #premiumHint.show { display:block; }
 </style>
 </head>
 <body>
@@ -201,6 +216,11 @@
       <div id="infoTitle">NEON STACK</div>
       <div id="tgUser"></div>
       <div id="infoBody"></div>
+      <div id="premiumBadge">💎 NEON PREMIUM · LIFETIME</div>
+      <div id="premiumList"></div>
+      <div id="premiumAchievements"></div>
+      <div id="premiumHint"></div>
+
       <button id="infoClose" type="button">CLOSE</button>
     </div>
   </div>
@@ -226,6 +246,9 @@
     goldenBlocks: true,
     levels: true,
     maxDpr: 2,
+    // Set this to your deployed Google Apps Script Web App URL.
+    // The backend must validate Telegram initData and return {premium:true}.
+    premiumApiUrl: "",
     onStart: null,
     onGameOver: null
   };
@@ -291,11 +314,21 @@
   var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
 
+  // Premium entitlement is NOT taken from localStorage. The server is the source of truth.
+  var premiumActive = false;
+  var premiumChecked = false;
+  var premiumStats = { games:0, blocks:0, perfects:0, highestLevel:1, bestCombo:0, accuracy:0 };
+  var premiumAchievements = [];
+
   var elInfoPanel = document.getElementById("infoPanel");
   var elInfoTitle = document.getElementById("infoTitle");
   var elInfoBody = document.getElementById("infoBody");
   var elTgUser = document.getElementById("tgUser");
   var elInfoClose = document.getElementById("infoClose");
+  var elPremiumBadge = document.getElementById("premiumBadge");
+  var elPremiumList = document.getElementById("premiumList");
+  var elPremiumAchievements = document.getElementById("premiumAchievements");
+  var elPremiumHint = document.getElementById("premiumHint");
 
   function tgName() {
     try {
@@ -305,16 +338,116 @@
     } catch (e) { return "Local player"; }
   }
 
+  function renderPremiumProfile() {
+    if (!premiumActive) {
+      elPremiumBadge.classList.remove("show");
+      elPremiumList.innerHTML = "";
+      elPremiumAchievements.innerHTML = "";
+      elPremiumHint.classList.add("show");
+      elPremiumHint.textContent = "💎 Premium features are available after your lifetime Premium purchase.";
+      return;
+    }
+
+    elPremiumBadge.classList.add("show");
+    elPremiumHint.classList.remove("show");
+    var acc = premiumStats.blocks > 0 ? Math.round(premiumStats.perfects / premiumStats.blocks * 100) : 0;
+    premiumStats.accuracy = acc;
+    elPremiumList.innerHTML =
+      '<div class="premiumStat"><span>Total Games</span><b>' + premiumStats.games + '</b></div>' +
+      '<div class="premiumStat"><span>Total Blocks</span><b>' + premiumStats.blocks + '</b></div>' +
+      '<div class="premiumStat"><span>Total Perfects</span><b>' + premiumStats.perfects + '</b></div>' +
+      '<div class="premiumStat"><span>Highest Level</span><b>' + premiumStats.highestLevel + '</b></div>' +
+      '<div class="premiumStat"><span>Best Combo</span><b>' + premiumStats.bestCombo + '</b></div>' +
+      '<div class="premiumStat"><span>Accuracy</span><b>' + acc + '%</b></div>';
+
+    var ach = [
+      ["💎 FIRST RUN", premiumStats.games >= 1],
+      ["✨ PERFECT 10", premiumStats.perfects >= 10],
+      ["⚡ COMBO 10", premiumStats.bestCombo >= 10],
+      ["🌌 LEVEL 10", premiumStats.highestLevel >= 10],
+      ["🏆 VETERAN", premiumStats.games >= 25]
+    ];
+    elPremiumAchievements.innerHTML = '<div style="font-weight:900;letter-spacing:1px;margin-bottom:8px">🏆 PREMIUM ACHIEVEMENTS</div>' +
+      ach.map(function(a){ return '<div class="pa ' + (a[1] ? 'unlocked' : '') + '">' + (a[1] ? '✓ ' : '○ ') + a[0] + '</div>'; }).join('');
+  }
+
+  function applyPremiumVisuals() {
+    document.body.classList.toggle("premium-mode", premiumActive);
+    if (!premiumActive) return;
+    // Premium theme: a persistent visual layer; no gameplay/stat advantage.
+    hueBase = 278;
+    if (elLevel) elLevel.style.boxShadow = "0 0 18px rgba(190,100,255,.22)";
+  }
+
+  function loadPremiumStats() {
+    premiumStats.games = games;
+    premiumStats.blocks = totalBlocks;
+    premiumStats.perfects = totalPerfects;
+    premiumStats.highestLevel = parseInt(localStorage.getItem("neon-stack-highest-level"), 10) || 1;
+    premiumStats.bestCombo = bestCombo;
+    premiumStats.accuracy = totalBlocks > 0 ? Math.round(totalPerfects / totalBlocks * 100) : 0;
+  }
+
+  function premiumAchievementEffect(text) {
+    if (!premiumActive) return;
+    showBanner(text, "220,160,255");
+    for (var i = 0; i < 18; i++) {
+      sparks.push({
+        x: 0, y: BASE, z: 0, vx:(Math.random()-.5)*260, vz:(Math.random()-.5)*260,
+        vy:-180-Math.random()*180, life:.8+Math.random()*.5, max:1.2, hue:270+Math.random()*70, gold:false
+      });
+    }
+  }
+
+  async function checkPremium() {
+    if (premiumChecked) return premiumActive;
+    premiumChecked = true;
+    premiumActive = false;
+    if (!CONFIG.premiumApiUrl || !tg || !tg.initData) {
+      applyPremiumVisuals();
+      loadPremiumStats();
+      return false;
+    }
+    try {
+      var response = await fetch(CONFIG.premiumApiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action:"premium_status", initData:tg.initData })
+      });
+      var result = await response.json();
+      premiumActive = result && result.premium === true;
+    } catch (e) {
+      premiumActive = false;
+    }
+    loadPremiumStats();
+    applyPremiumVisuals();
+    return premiumActive;
+  }
+
+  function openPremiumInfo() {
+    elInfoTitle.textContent = "NEON PREMIUM";
+    elTgUser.textContent = tgName();
+    elInfoBody.textContent = premiumActive ? "💎 PREMIUM ACTIVE\n\nOne-time purchase · Lifetime access\nNo pay-to-win advantages." :
+      "💎 NEON PREMIUM · 100 ⭐\n\nOne-time purchase · Lifetime access\n\nPremium Status\nPremium Theme\nPremium Block Skin\nPremium Effects\nAdvanced Statistics\nPremium Achievements";
+    renderPremiumProfile();
+    elInfoPanel.classList.add("show");
+    elInfoPanel.setAttribute("aria-hidden", "false");
+    if (tg && tg.BackButton) { try { tg.BackButton.show(); } catch (e) {} }
+  }
+
   function openInfo(kind) {
+    if (kind === "premium") { openPremiumInfo(); return; }
     if (kind === "profile") {
       var acc = totalBlocks > 0 ? Math.round(totalPerfects / totalBlocks * 100) : 0;
       elInfoTitle.textContent = "PROFILE";
       elTgUser.textContent = tgName();
       elInfoBody.textContent =
+        (premiumActive ? "💎 PREMIUM ACTIVE\n\n" : "") +
         "BEST SCORE\n" + best + "\n\n" +
         "GAMES\n" + games + "\n\n" +
         "BEST COMBO\n" + bestCombo + "\n\n" +
         "ACCURACY\n" + acc + "%";
+      renderPremiumProfile();
     } else {
       elInfoTitle.textContent = "HOW TO PLAY";
       elTgUser.textContent = "";
@@ -324,12 +457,14 @@
         "Place blocks accurately to build your combo and score.\n\n" +
         "SPACE / ENTER / ARROW DOWN — play or drop\n" +
         "M — toggle sound";
+      elPremiumBadge.classList.remove("show");
+      elPremiumList.innerHTML = "";
+      elPremiumAchievements.innerHTML = "";
+      elPremiumHint.classList.remove("show");
     }
     elInfoPanel.classList.add("show");
     elInfoPanel.setAttribute("aria-hidden", "false");
-    if (tg && tg.BackButton) {
-      try { tg.BackButton.show(); } catch (e) {}
-    }
+    if (tg && tg.BackButton) { try { tg.BackButton.show(); } catch (e) {} }
   }
 
   function closeInfo() {
@@ -353,6 +488,7 @@
       if (action === "play") { setTimeout(function(){ if (state === "menu") startGame(); }, 50); }
       else if (action === "profile") { setTimeout(function(){ openInfo("profile"); }, 50); }
       else if (action === "help") { setTimeout(function(){ openInfo("help"); }, 50); }
+      else if (action === "premium") { setTimeout(function(){ openInfo("premium"); }, 50); }
     } catch (e) {}
   }
 
@@ -399,6 +535,8 @@
       (games > 0 ? "GAMES \u00B7 " + games : "");
   }
   setBestMenu();
+  loadPremiumStats();
+  checkPremium();
 
   function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, CONFIG.maxDpr || 2);
@@ -530,6 +668,9 @@
 
   function levelUp(n) {
     level = n;
+    if (level > (parseInt(localStorage.getItem("neon-stack-highest-level"), 10) || 1)) {
+      try { localStorage.setItem("neon-stack-highest-level", String(level)); } catch (e) {}
+    }
     elLevel.textContent = "LV " + level;
     elLevel.classList.remove("hot");
     void elLevel.offsetWidth;
@@ -617,6 +758,7 @@
       if (combo > bestCombo) bestCombo = combo;
       sfxPerfect(combo, moving.gold);
       burstSparks({ x: nx, z: nz, w: nw, d: nd, y: moving.y }, moving.gold);
+      if (premiumActive) showBanner(combo >= 5 ? "💎 PERFECT RAMPAGE" : "✨ PERFECT", "220,160,255");
       shake = Math.min(shake + 4, 10);
       if (moving.gold) { addPopup(nx, moving.y + BH, nz, "GOLD \u00D7" + pts, "255,225,110", 1.5); buzz(15); }
       else buzz(5);
@@ -690,6 +832,8 @@
     games++;
     totalBlocks += blocks;
     totalPerfects += perfects;
+    loadPremiumStats();
+    if (premiumActive && isBest && score > 0) premiumAchievementEffect("💎 NEW RECORD");
     try {
       localStorage.setItem("neon-stack-games", String(games));
       localStorage.setItem("neon-stack-blocks", String(totalBlocks));
@@ -988,6 +1132,7 @@
     var y1 = b.y + BH * (1 - 0.45 * sq);
     if (sq > 0) { hw *= 1 + 0.06 * sq; hd *= 1 + 0.06 * sq; }
     var h = b.hue, g = b.gold;
+    if (premiumActive && !g) h = (280 + (b.y / BH) * 9) % 360;
     var A = alpha === undefined ? 1 : alpha;
     var cx = b.x, cz = b.z;
     var C = [], T = [], B = [], ci;
@@ -1259,7 +1404,7 @@
   }
 
   function render() {
-    var hueBg = (hueBase + stack.length * 5) % 360;
+    var hueBg = premiumActive ? (275 + stack.length * 4) % 360 : (hueBase + stack.length * 5) % 360;
     var g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "hsl(" + hueBg + ", 48%, 9%)");
     g.addColorStop(0.55, "hsl(" + ((hueBg + 30) % 360) + ", 52%, 15%)");
