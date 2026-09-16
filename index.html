@@ -327,16 +327,23 @@
     }
     elInfoPanel.classList.add("show");
     elInfoPanel.setAttribute("aria-hidden", "false");
+    if (tg && tg.BackButton) {
+      try { tg.BackButton.show(); } catch (e) {}
+    }
   }
 
   function closeInfo() {
     elInfoPanel.classList.remove("show");
     elInfoPanel.setAttribute("aria-hidden", "true");
+    if (tg && tg.BackButton) {
+      try { tg.BackButton.hide(); } catch (e) {}
+    }
   }
   elInfoClose.addEventListener("click", closeInfo);
   elInfoPanel.addEventListener("click", function(e) { if (e.target === elInfoPanel) closeInfo(); });
   if (tg && tg.BackButton) {
     tg.BackButton.onClick(closeInfo);
+    try { tg.BackButton.hide(); } catch (e) {}
   }
 
   function handleMiniAppRoute() {
@@ -777,6 +784,7 @@
 
   function beginPress(e) {
     if (e.button !== undefined && e.button !== 0) return;
+    if (elInfoPanel.classList.contains("show")) return;
     ensureAudio();
     if (activePtr !== -1) return;
     e.preventDefault();
@@ -793,56 +801,62 @@
   window.addEventListener("pointercancel", function (e) {
     if (e.pointerId === activePtr) { activePtr = -1; hold = false; }
   });
+  // GLOBAL KEYBOARD CONTROLS
+  // These controls work in MENU, GAMEPLAY, GAME OVER, PROFILE and HELP.
+  function isGameControlKey(e) {
+    return e.code === "Space" ||
+           e.code === "Enter" ||
+           e.code === "ArrowDown";
+  }
+
+  function closeInfoForControl() {
+    if (elInfoPanel.classList.contains("show")) {
+      closeInfo();
+    }
+  }
+
   window.addEventListener("keydown", function (e) {
-    // SPACE / ENTER / ARROW DOWN — work everywhere
-    if (
-        e.code === "Space" ||
-        e.code === "Enter" ||
-        e.code === "ArrowDown"
-    ) {
-        e.preventDefault();
+    // SPACE / ENTER / ARROW DOWN — available everywhere
+    if (isGameControlKey(e)) {
+      e.preventDefault();
 
-        // Prevent repeated keydown from firing multiple actions
-        if (e.repeat) return;
+      // Never repeat an action while the key is held down.
+      if (e.repeat) return;
 
-        ensureAudio();
+      // If PROFILE or HELP is open, close it first.
+      closeInfoForControl();
+      ensureAudio();
 
-        // During gameplay: hold = slow down the block
-        if (state === "playing") {
-            hold = true;
-        }
-        // Menu: start game
-        // Game Over: restart game
-        else {
-            action();
-        }
+      // In gameplay: hold = slow the moving block.
+      // In menu/game over: the same key starts/restarts the game.
+      if (state === "playing") {
+        hold = true;
+      } else {
+        action();
+      }
 
-        return;
+      return;
     }
 
-    // M — sound toggle works everywhere
+    // M — sound toggle is global too.
     if (e.code === "KeyM") {
-        e.preventDefault();
-        muteHandler();
-        return;
+      e.preventDefault();
+      muteHandler();
+      return;
     }
-});
+  });
 
-window.addEventListener("keyup", function (e) {
-    // Release SPACE / ENTER / ARROW DOWN = drop
-    if (
-        e.code === "Space" ||
-        e.code === "Enter" ||
-        e.code === "ArrowDown"
-    ) {
-        e.preventDefault();
+  window.addEventListener("keyup", function (e) {
+    // Release SPACE / ENTER / ARROW DOWN = drop.
+    if (isGameControlKey(e)) {
+      e.preventDefault();
 
-        if (state === "playing" && hold) {
-            hold = false;
-            action();
-        }
+      if (state === "playing" && hold) {
+        hold = false;
+        action();
+      }
     }
-});
+  });
   window.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   document.addEventListener("touchmove", function (e) { e.preventDefault(); }, { passive: false });
   document.addEventListener("visibilitychange", function () { lastT = performance.now(); });
